@@ -29,10 +29,13 @@ import hudson.Launcher;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
 import hudson.model.BuildListener;
+import hudson.model.Run.RunnerAbortedException;
 import hudson.tasks.BuildWrapper;
 import hudson.tasks.BuildWrapperDescriptor;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -70,6 +73,25 @@ public class SecretBuildWrapper extends BuildWrapper {
                 return true;
             }
         };
+    }
+
+    @Override public OutputStream decorateLogger(AbstractBuild build, OutputStream logger)
+            throws IOException, InterruptedException, RunnerAbortedException {
+
+        Map<String,String> overrides = new HashMap<String, String>();
+        for (MultiBinding<?> binding : bindings) {
+            MultiBinding.MultiEnvironment environment = binding.bind(build, null, null, null);
+            for (String envKey : environment.getValues().keySet()) {
+                if (!environment.getValues().get(envKey).isEmpty()) {
+                    overrides.put(envKey, environment.getValues().get(envKey));
+                }
+            }
+        }
+        if (!overrides.isEmpty()) {
+            return new BindingStep.Filter(overrides.values(), build.getCharset().name()).decorateLogger(build, logger);
+        } else {
+            return logger;
+        }
     }
 
     @Override public void makeSensitiveBuildVariables(AbstractBuild build, Set<String> sensitiveVariables) {
